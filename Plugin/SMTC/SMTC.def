@@ -1,0 +1,3 @@
+LIBRARY SMTC
+EXPORTS
+    DllGetClassObject PRIVATE
