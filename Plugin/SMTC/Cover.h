@@ -13,8 +13,8 @@
 namespace smtc {
 using ImageBytes = std::vector<std::uint8_t>;
 using Cancelled = std::function<bool()>;
-constexpr std::size_t MaxArtworkBytes = 8 * 1024 * 1024;
-// 8 MiB 是插件自设保护值，并非 SMTC 接口的强制上限。
+constexpr std::size_t MaxArtworkBytes = 10 * 1000 * 1000;
+// 10 MB（10,000,000 字节）是插件自设保护值，并非 SMTC 接口的强制上限。
 bool IsNetSearchPath(std::string_view path) noexcept;
 bool IsNetSearchPath(std::wstring_view path) noexcept;
 

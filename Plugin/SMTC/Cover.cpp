@@ -22,7 +22,7 @@ struct HttpCloser { void operator()(void* value) const { if (value) WinHttpClose
 using Http = std::unique_ptr<void, HttpCloser>;
 
 bool IsImage(const ImageBytes& bytes) {
-    // 按需读取首帧尺寸，限制压缩数据和像素数；不会主动解码整幅像素。
+    // 按需读取首帧尺寸，限制压缩数据及宽高；不会主动解码整幅像素。
     if (bytes.empty() || bytes.size() > MaxArtworkBytes) return false;
     winrt::com_ptr<IWICImagingFactory> factory;
     if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
@@ -36,7 +36,7 @@ bool IsImage(const ImageBytes& bytes) {
         FAILED(decoder->GetFrame(0, frame.put()))) return false;
     UINT width{}, height{};
     return SUCCEEDED(frame->GetSize(&width, &height)) && width > 0 && height > 0 &&
-        width <= 16384 && height <= 16384 && static_cast<std::uint64_t>(width) * height <= 40000000;
+        width <= 5000 && height <= 5000;
 }
 
 std::wstring Attribute(IXmlReader* reader, const wchar_t* name) {
@@ -157,11 +157,11 @@ ImageBytes DownloadArtwork(const std::wstring& url, const Cancelled& cancelled) 
     if (!WinHttpCrackUrl(url.c_str(), 0, 0, &parts) ||
         (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS) ||
         parts.dwUserNameLength || parts.dwPasswordLength) return {};
-    Http session(WinHttpOpen(L"VirtualDJ-SMTC/0.1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    Http session(WinHttpOpen(L"VirtualDJ-SMTC/0.1.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
     if (!session) return {};
-    WinHttpSetTimeouts(session.get(), 2000, 2000, 2000, 2000);
-    DWORD redirects = 4;
+    WinHttpSetTimeouts(session.get(), 1000, 1000, 1000, 1000);
+    DWORD redirects = 1;
     WinHttpSetOption(session.get(), WINHTTP_OPTION_MAX_HTTP_AUTOMATIC_REDIRECTS, &redirects, sizeof(redirects));
     const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
     Http connection(WinHttpConnect(session.get(), host.c_str(), parts.nPort, 0));
@@ -207,8 +207,8 @@ ImageBytes DownloadArtwork(const std::wstring& url, const Cancelled& cancelled) 
     Http active(request.release());
     const auto started = Clock::now();
     const auto wait = [&](DWORD expected) {
-        // 整个下载共享八秒期限，每 25 ms 检查取消，避免旧请求拖延切歌。
-        while (!cancelled() && Clock::now() - started < std::chrono::seconds(8)) {
+        // 整个下载共享五秒期限，每 25 ms 检查取消，避免旧请求拖延切歌。
+        while (!cancelled() && Clock::now() - started < std::chrono::seconds(5)) {
             const DWORD result = WaitForSingleObject(state->done, 25);
             if (result == WAIT_OBJECT_0) return state->status.load() == expected && !cancelled();
             if (result != WAIT_TIMEOUT) break;

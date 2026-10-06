@@ -29,7 +29,7 @@ namespace {
 HMODULE g_module{};
 std::atomic<bool> g_owned{false};
 // 发布时更新此版本；按钮文字和 Release 地址自动跟随。
-constexpr char kVersion[] = "0.1.0";
+constexpr char kVersion[] = "0.1.1";
 const std::string kVersionLabel = std::string("Version ") + kVersion;
 const std::string kReleaseUrl =
     std::string("https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v") + kVersion;
@@ -42,6 +42,40 @@ void Log(const char* message, HRESULT hr = S_OK) noexcept {
     if (hr == S_OK) smtc::LogEvent(smtc::LogLevel::Info, "Bridge", "%s", message);
     else smtc::LogEvent(FAILED(hr) ? smtc::LogLevel::Error : smtc::LogLevel::Warning,
         "Bridge", "%s; Windows error code=0x%08lX", message, static_cast<unsigned long>(hr));
+}
+// 等待 WinRT 操作时监听停止事件；只有成功完成后才允许调用 GetResults。
+template<class Operation>
+bool WaitForAsync(const Operation& operation, HANDLE stop, const char* description,
+    std::chrono::milliseconds timeout = std::chrono::seconds(1)) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    const auto cancel = [&] {
+        try { operation.Cancel(); }
+        catch (...) { Log("WinRT cancellation request failed", to_hresult()); }
+    };
+    for (;;) {
+        if (stop && WaitForSingleObject(stop, 0) == WAIT_OBJECT_0) {
+            cancel();
+            return false;
+        }
+        const auto status = operation.Status();
+        if (status == AsyncStatus::Completed) return true;
+        if (status == AsyncStatus::Error) throw_hresult(operation.ErrorCode());
+        if (status == AsyncStatus::Canceled) return false;
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            cancel();
+            smtc::LogEvent(smtc::LogLevel::Warning, "Async",
+                "%s timed out; operation cancelled", description);
+            return false;
+        }
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+        const DWORD interval = static_cast<DWORD>((std::min)(std::chrono::milliseconds(25),
+            (std::max)(std::chrono::milliseconds(1), remaining)).count());
+        if (stop) {
+            const DWORD result = WaitForSingleObject(stop, interval);
+            if (result == WAIT_FAILED) { cancel(); throw_last_error(); }
+        } else Sleep(interval);
+    }
 }
 const char* ActionName(smtc::Action action) noexcept {
     switch (action) {
@@ -395,9 +429,20 @@ private:
         }
         using namespace Windows::Storage::Streams;
         InMemoryRandomAccessStream stream;
+        const unsigned artworkSettings = settings_.load();
         DataWriter writer(stream);
         writer.WriteBytes(result->image);
-        writer.StoreAsync().get();
+        auto store = writer.StoreAsync();
+        // 完成回调仅保留流与写入器，不访问插件；取消后的迟到完成仍有有效资源。
+        store.Completed([writer, stream](const auto&, AsyncStatus) noexcept {});
+        if (!WaitForAsync(store, mailbox_ ? mailbox_->stop : nullptr, "Artwork stream write")) {
+            if (mailbox_ && WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) return;
+            Log("Artwork stream write did not complete; no automatic retry for this track");
+            return;
+        }
+        store.GetResults();
+        if (mailbox_ && WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) return;
+        if (settings_.load() != artworkSettings) return;
         writer.DetachStream();
         stream.Seek(0);
         auto updater = controls.DisplayUpdater();
@@ -417,7 +462,9 @@ private:
                 Log("Windows media command ignored: no current media session");
                 return false;
             }
-            const auto properties = current.TryGetMediaPropertiesAsync().get();
+            const auto read = current.TryGetMediaPropertiesAsync();
+            if (!WaitForAsync(read, mailbox_->stop, "Current media properties read")) return false;
+            const auto properties = read.GetResults();
             const auto currentSource = to_string(current.SourceAppUserModelId());
             if (!request.sourceAppId.empty() && request.sourceAppId != currentSource) {
                 smtc::LogEvent(smtc::LogLevel::Warning, "Control",
@@ -559,7 +606,7 @@ private:
             WNDCLASSW wc{};
             wc.lpfnWndProc = DefWindowProcW;
             wc.hInstance = g_module;
-            wc.lpszClassName = L"VirtualDJ.SMTC.Bridge.0.1";
+            wc.lpszClassName = L"VirtualDJ.SMTC.Plugin";
             windowClass = RegisterClassW(&wc);
             if (!windowClass) throw_last_error();
             // SMTC 需要隐藏的顶层窗口；窗口及消息泵全由桥接线程管理。
@@ -581,7 +628,12 @@ private:
             controls.IsFastForwardEnabled(false);
             controls.IsRewindEnabled(false);
             try {
-                sessionManager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+                const auto request = GlobalSystemMediaTransportControlsSessionManager::RequestAsync();
+                if (!WaitForAsync(request, mailbox_->stop, "Media session manager initialization")) {
+                    if (WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) throw_hresult(E_ABORT);
+                    throw_hresult(HRESULT_FROM_WIN32(ERROR_TIMEOUT));
+                }
+                sessionManager = request.GetResults();
                 Log("Windows current-session validation enabled");
             } catch (...) {
                 Log("Windows current-session validation is unavailable; media commands will use the legacy behavior", to_hresult());

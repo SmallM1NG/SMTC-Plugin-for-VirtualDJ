@@ -65,13 +65,15 @@ Track navigation also checks the current Windows media session. It compares the 
 
 Artwork runs on a separate worker so tag reads and downloads do not block state queries. Each track identity change clears the previous artwork and submits one task. Local files use embedded images read through TagLib, preferring Front Cover. The plugin does not search the database or neighboring image files for local tracks.
 
-For `netsearch://` paths, `get_vdj_folder` locates the main `database.xml`. The XML scan matches a Song's FilePath, or a Link's NetSearch attribute against the track identifier with the prefix removed. It reads the matching Link's Cover attribute and downloads the image through WinHTTP. Missing links and failed downloads leave the track without artwork.
+For `netsearch://` paths, `get_vdj_folder` locates the main `database.xml`. The XML scan matches a Song's FilePath, or a Link's NetSearch attribute against the track identifier with the prefix removed. It reads the matching Link's Cover attribute and downloads the image through WinHTTP, allowing at most one redirect. Resolve, connect, send, and receive timeouts are each set to one second, and asynchronous waits share a five-second deadline. Missing links and failed downloads leave the track without artwork.
 
-XML is read as a stream with DTD processing prohibited and limits on file size, nesting depth, and scan time. WIC validates images. Current limits are 8 MiB, 16384 pixels per side, and 40 million total pixels. Oversized images are rejected rather than resized.
+XML is read as a stream with DTD processing prohibited and limits on file size, nesting depth, and scan time. WIC validates images. Current limits are 10 MB (10,000,000 bytes), with width and height each capped at 5000 pixels. Oversized images are rejected rather than resized.
 
 Each task has an increasing ticket number. Track changes and disabling invalidate old work. The worker checks cancellation, and the publisher checks the ticket again. Valid image bytes are written to an `InMemoryRandomAccessStream` and supplied as an SMTC thumbnail through `RandomAccessStreamReference`. Bytes are retained only by objects needed for current processing and display; there is no historical artwork or URL cache.
 
 Each track visit gets one artwork attempt. Failed or cancelled tasks are not automatically resumed. A new track visit or re-enabling the plugin starts another attempt.
+
+WinRT asynchronous operations on the bridge thread use bounded waits of up to one second, checking the stop event at intervals of no more than 25 ms. GetResults is called only after successful completion. Timeout or shutdown requests cancellation without waiting for completion. An artwork write timeout drops that publication; a media-session validation timeout drops the navigation request; a session-manager initialization timeout uses the existing fallback. The artwork completion callback retains only the stream and writer, without accessing the plugin, so late completion does not use released resources.
 
 ## Error handling and logging
 
