@@ -1,4 +1,4 @@
-#include "vdjPlugin8.h"
+﻿#include "vdjPlugin8.h"
 #include "BridgeCore.h"
 #include "Cover.h"
 
@@ -29,14 +29,14 @@ namespace {
 HMODULE g_module{};
 std::atomic<bool> g_owned{false};
 // 发布时更新此版本；按钮文字和 Release 地址自动跟随。
-constexpr char kVersion[] = "0.1.1";
+constexpr char kVersion[] = "0.1.2";
 const std::string kVersionLabel = std::string("Version ") + kVersion;
 const std::string kReleaseUrl =
     std::string("https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v") + kVersion;
 constexpr char kSourceLabel[] = "Source Deck";
 constexpr char kDeveloperLabel[] = "Developed by 小小小小铭 (aka DJM1NG)";
 constexpr char kAuthor[] = "小小小小铭 (aka DJM1NG)";
-constexpr char kDescription[] = "Share track information, artwork and playback controls with Windows";
+constexpr char kDescription[] = "Share track information, artwork, playback progress and controls with Windows";
 
 void Log(const char* message, HRESULT hr = S_OK) noexcept {
     if (hr == S_OK) smtc::LogEvent(smtc::LogLevel::Info, "Bridge", "%s", message);
@@ -83,6 +83,7 @@ const char* ActionName(smtc::Action action) noexcept {
     case smtc::Action::Pause: return "Pause";
     case smtc::Action::Next: return "Next track";
     case smtc::Action::Previous: return "Previous track";
+    case smtc::Action::Seek: return "Seek";
     }
     return "Unknown";
 }
@@ -99,6 +100,10 @@ struct Mailbox {
     std::mutex mutex;
     std::deque<smtc::Request> requests;
     smtc::Track displayed;
+    // 跳转快照与时间轴一起发布，不能使用尚未更新的 displayed。
+    smtc::Track seekTrack;
+    std::int64_t seekDuration = 0;
+    unsigned seekRevision = 0;
     bool accepting = false;
     bool closed = false;
     HANDLE stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -116,10 +121,25 @@ struct Mailbox {
             SetEvent(wake);
         } else smtc::LogEvent(smtc::LogLevel::Warning, "Control", "Windows media button ignored: %s", closed ? "SMTC is stopping" : !accepting ? "no controllable track is available" : "command queue is full");
     }
+    void PushSeek(std::int64_t position, std::string source = {}) {
+        std::lock_guard lock(mutex);
+        if (closed || !seekTrack.loaded || seekDuration <= 0 || position < 0 ||
+            position > seekDuration) return;
+        // 连续拖动合并到最新请求，并保留播放、切歌命令的顺序。
+        std::erase_if(requests, [](const auto& request) { return request.action == smtc::Action::Seek; });
+        if (requests.size() >= 32) return;
+        requests.push_back({smtc::Action::Seek, seekTrack, std::move(source),
+            static_cast<double>(position) / seekDuration, seekRevision});
+        smtc::LogEvent(smtc::LogLevel::Info, "Control",
+            "Windows seek requested; deck=%d; position_ticks=%lld; duration_ticks=%lld",
+            seekTrack.deck, static_cast<long long>(position), static_cast<long long>(seekDuration));
+        SetEvent(wake);
+    }
     void Close() {
         std::lock_guard lock(mutex);
         closed = true;
         accepting = false;
+        seekDuration = 0;
         requests.clear();
         SetEvent(stop);
     }
@@ -156,8 +176,13 @@ public:
         owns_ = true;
         try {
             check_hresult(DeclareParameterSwitch(&enabled_, 1, "Enable SMTC", "Enable", true));
+            check_hresult(DeclareParameterSwitch(&shareCover_, 14, "Share Cover", "Cover", true));
+            check_hresult(DeclareParameterSwitch(&shareInfo_, 15, "Share Track Info", "Track Info", true));
+            check_hresult(DeclareParameterSwitch(&shareProgress_, 12, "Share Progress", "Progress", true));
+            check_hresult(DeclareParameterSwitch(&allowSeeking_, 13, "Enable Seeking", "Seeking", true));
+            check_hresult(DeclareParameterSlider(&timeMode_, 16, "Timeline Mode", "Timeline", 0.f));
             check_hresult(DeclareParameterSlider(&deck_, 5, kSourceLabel, kSourceLabel, 1.f));
-            check_hresult(DeclareParameterSlider(&polling_, 10, "Polling Interval", "Polling", 0.f));
+            check_hresult(DeclareParameterSlider(&polling_, 10, "Polling Interval", "Polling", smtc::DefaultPollingValue));
             check_hresult(DeclareParameterButton(&developerButton_, 8, kDeveloperLabel, kDeveloperLabel));
             check_hresult(DeclareParameterButton(&versionButton_, 11, kVersionLabel.c_str(), kVersion));
             PublishSettings();
@@ -183,11 +208,17 @@ public:
         try {
             failedQueries_.clear();
             missingTrackSince_ = {};
+            publishedInfo_ = true;
+            timelinePublished_ = false;
+            progressLogAt_ = 0;
+            progressPolls_ = progressPublications_ = progressStateChanges_ = progressRateChanges_ = 0;
+            progressDurationChanges_ = progressDriftCorrections_ = progressIdentityChanges_ = progressForcedSeeks_ = 0;
+            progressFailed_ = false;
             PublishSettings();
             mailbox_ = std::make_shared<Mailbox>();
             if (!mailbox_->stop || !mailbox_->wake) throw_last_error();
 
-            // 撤销订阅后仍可能有迟到回调；固定 DLL，并只捕获共享邮箱。
+            // 撤销订阅后仍可能有迟到回调；固定 DLL，回调仅持有共享邮箱和会话管理器，不持有插件对象。
             HMODULE pinned{};
             if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                 GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&g_module), &pinned)) throw_last_error();
@@ -217,6 +248,11 @@ public:
             Log("SMTC disabled; polling stopped, artwork tasks cancelled, Windows media session closed");
             return S_OK;
         }
+        if (id == 16) timeMode_ = std::isfinite(timeMode_) ? std::clamp(timeMode_, 0.f, 1.f) : 0.f;
+        if (id == 14) shareCover_ = shareCover_ != 0;
+        if (id == 15) shareInfo_ = shareInfo_ != 0;
+        if (id == 13) allowSeeking_ = allowSeeking_ != 0;
+        if (id == 12) shareProgress_ = shareProgress_ != 0;
         if (id == 8) {
             if (developerButton_ && !developerHeld_)
                 OpenProjectPage("https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ", "Project repository");
@@ -233,7 +269,7 @@ public:
             deck_ = std::isfinite(deck_) ? std::clamp(deck_, 0.f, 1.f) : 1.f;
         }
         if (id == 10) {
-            polling_ = std::isfinite(polling_) ? std::clamp(polling_, 0.f, 1.f) : 0.f;
+            polling_ = std::isfinite(polling_) ? std::clamp(polling_, 0.f, 1.f) : smtc::DefaultPollingValue;
             smtc::LogEvent(smtc::LogLevel::Info, "Settings", "Polling interval changed; milliseconds=%u", smtc::PollingMilliseconds(polling_));
         }
         if (PublishSettings()) Wake();
@@ -255,6 +291,22 @@ public:
             _snprintf_s(text, size, _TRUNCATE, "%u ms", smtc::PollingMilliseconds(polling_));
             return S_OK;
         }
+        if (id == 16) {
+            _snprintf_s(text, size, _TRUNCATE, "%s", smtc::OriginalTimeFromSlider(timeMode_) ? "Original + Pitch" : "Adjusted");
+            return S_OK;
+        }
+        if (id == 14 || id == 15) {
+            _snprintf_s(text, size, _TRUNCATE, "%s", (id == 14 ? shareCover_ : shareInfo_) ? "Enabled" : "Disabled");
+            return S_OK;
+        }
+        if (id == 13) {
+            _snprintf_s(text, size, _TRUNCATE, "%s", allowSeeking_ ? "Enabled" : "Disabled");
+            return S_OK;
+        }
+        if (id == 12) {
+            _snprintf_s(text, size, _TRUNCATE, "%s", shareProgress_ ? "Enabled" : "Disabled");
+            return S_OK;
+        }
         if (id == 11) { _snprintf_s(text, size, _TRUNCATE, "%s", kVersionLabel.c_str()); return S_OK; }
         if (id != 5) return E_NOTIMPL;
         const int deck = smtc::DeckFromSlider(deck_);
@@ -264,10 +316,33 @@ public:
 
 private:
     int enabled_ = 1;
+    int shareProgress_ = 1, allowSeeking_ = 1;
+    int shareCover_ = 1, shareInfo_ = 1;
+    std::atomic<unsigned> sharingFlags_{3}; // 位 0 为封面，位 1 为文字信息。
+    std::atomic<unsigned> coverRevision_{0};
+    bool publishedInfo_ = true; // 仅由桥接线程访问。
+    std::atomic<bool> seekingEnabled_{true};
+    std::atomic<unsigned> seekRevision_{0};
+    std::atomic<bool> progressEnabled_{true};
+    bool timelinePublished_ = false; // 仅由桥接线程访问。
+    smtc::TimelineAnchor timelineAnchor_;
+    smtc::Track timelineTrack_;
+    unsigned timelineRevision_ = 0;
+    bool forceTimeline_ = false;
+    // 进度日志每五秒汇总，避免逐帧写入影响播放。
+    double progressLogAt_ = 0;
+    unsigned progressPolls_ = 0, progressPublications_ = 0;
+    unsigned progressStateChanges_ = 0, progressRateChanges_ = 0;
+    unsigned progressDurationChanges_ = 0, progressDriftCorrections_ = 0;
+    unsigned progressIdentityChanges_ = 0, progressForcedSeeks_ = 0;
+
+    bool progressFailed_ = false;
     int developerButton_ = 0, versionButton_ = 0;
     bool developerHeld_ = false, versionHeld_ = false;
 
-    float deck_ = 1.f, polling_ = 0.f;
+    float timeMode_ = 0.f;
+    std::atomic<bool> originalTime_{true};
+    float deck_ = 1.f, polling_ = smtc::DefaultPollingValue;
     std::atomic<unsigned> pollingMs_{100};
     // 原子设置字包含启用位、来源和修订号，避免工作线程读取混合配置。
     std::atomic<unsigned> settings_{1};
@@ -299,9 +374,27 @@ private:
             settings_.store(((previous + 0x10000u) & 0xffff0000u) | selection);
             smtc::LogEvent(smtc::LogLevel::Info, "Settings", "Settings updated; SMTC=%s; source=%s", enabled_ ? "Enabled" : "Disabled", SourceName(smtc::DeckFromSlider(deck_)));
         }
+        const unsigned flags = (shareCover_ ? 1u : 0u) | (shareInfo_ ? 2u : 0u);
+        const unsigned oldFlags = sharingFlags_.exchange(flags);
+        if ((oldFlags ^ flags) & 1u) coverRevision_.fetch_add(1);
+        if (oldFlags != flags) smtc::LogEvent(smtc::LogLevel::Info, "Settings",
+            "Sharing changed; artwork=%s; track information=%s",
+            shareCover_ ? "Enabled" : "Disabled", shareInfo_ ? "Enabled" : "Disabled");
         const unsigned interval = smtc::PollingMilliseconds(polling_);
         const bool intervalChanged = pollingMs_.exchange(interval) != interval;
-        return (previous & 0xffffu) != selection || intervalChanged;
+        const bool progressChanged = progressEnabled_.exchange(shareProgress_ != 0) != (shareProgress_ != 0);
+        if (progressChanged) smtc::LogEvent(smtc::LogLevel::Info, "Settings",
+            "Playback progress sharing %s", shareProgress_ ? "enabled" : "disabled");
+        const bool seekingChanged = seekingEnabled_.exchange(allowSeeking_ != 0) != (allowSeeking_ != 0);
+        const bool original = smtc::OriginalTimeFromSlider(timeMode_);
+        const bool modeChanged = originalTime_.exchange(original) != original;
+        // 模式切换会改变时间单位语义，丢弃旧模式下尚未执行的位置请求。
+        if (progressChanged || seekingChanged || modeChanged) seekRevision_.fetch_add(1);
+        if (modeChanged) smtc::LogEvent(smtc::LogLevel::Info, "Settings",
+            "Progress time mode changed; mode=%s", original ? "Original + Pitch" : "Adjusted");
+        if (seekingChanged) smtc::LogEvent(smtc::LogLevel::Info, "Settings",
+            "Playback seeking %s", allowSeeking_ ? "enabled" : "disabled");
+        return (previous & 0xffffu) != selection || intervalChanged || progressChanged || seekingChanged || oldFlags != flags || modeChanged;
     }
 
     void Wake() noexcept { std::lock_guard lock(runtimeMutex_); if (mailbox_) SetEvent(mailbox_->wake); }
@@ -381,9 +474,13 @@ private:
         track.playing = playing != 0;
         track.path = Text(prefix + "get_filepath");
         if (track.path.empty()) { track.loaded = false; return track; }
-        if (track.SameIdentity(previous)) {
+        if (!(sharingFlags_.load() & 2u)) {
+            // 关闭信息共享时仍保留曲目路径供播放控制、封面与时间轴使用。
+        } else if (track.SameIdentity(previous) && previous.metadataRead) {
+            track.metadataRead = true;
             track.title = previous.title; track.artist = previous.artist; track.album = previous.album;
         } else {
+            track.metadataRead = true;
             track.title = Text(prefix + "get_title_remix");
             if (track.title.empty()) track.title = Text(prefix + "get_title");
             track.artist = Text(prefix + "get_artist");
@@ -404,11 +501,27 @@ private:
         smtc::ArtworkWorker worker;
         std::uint64_t ticket = 0;
         bool pending = false;
+        bool active = true;
+        unsigned revision = 0;
     };
 
     void UpdateArtwork(const SystemMediaTransportControls& controls, const smtc::Track& track,
         bool changed, ArtworkState& artwork) {
-        // 每次换歌只发起一次封面任务，票号阻止旧结果覆盖新曲目。
+        const bool enabled = (sharingFlags_.load() & 1u) != 0;
+        const unsigned revision = coverRevision_.load();
+        if (!enabled) {
+            if (artwork.active) {
+                artwork.worker.Cancel(); artwork.ticket = 0; artwork.pending = false;
+                auto updater = controls.DisplayUpdater();
+                updater.Thumbnail(nullptr); updater.Update();
+                artwork.active = false;
+            }
+            return;
+        }
+        // 每次换歌或重新启用封面只发起一次任务；修订号拦截关闭后的旧结果。
+        changed = changed || !artwork.active || artwork.revision != revision;
+        artwork.active = true;
+        artwork.revision = revision;
         if (changed) {
             const auto home = smtc::IsNetSearchPath(track.path) ? Text("get_vdj_folder") : std::string{};
             artwork.ticket = artwork.worker.Request(track.path, home);
@@ -442,7 +555,8 @@ private:
         }
         store.GetResults();
         if (mailbox_ && WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) return;
-        if (settings_.load() != artworkSettings) return;
+        if (settings_.load() != artworkSettings || !(sharingFlags_.load() & 1u) ||
+            coverRevision_.load() != revision) return;
         writer.DetachStream();
         stream.Seek(0);
         auto updater = controls.DisplayUpdater();
@@ -486,6 +600,109 @@ private:
         }
     }
 
+    void ClearTimeline(const SystemMediaTransportControls& controls) {
+        if (mailbox_) { std::lock_guard lock(mailbox_->mutex); mailbox_->seekDuration = 0; }
+        if (!timelinePublished_) return;
+        SystemMediaTransportControlsTimelineProperties timeline;
+        timeline.StartTime(TimeSpan{0});
+        timeline.EndTime(TimeSpan{0});
+        timeline.Position(TimeSpan{0});
+        timeline.MinSeekTime(TimeSpan{0});
+        timeline.MaxSeekTime(TimeSpan{0});
+        controls.UpdateTimelineProperties(timeline);
+        controls.PlaybackRate(1.0);
+        timelinePublished_ = false;
+    }
+
+    void UpdateProgress(const SystemMediaTransportControls& controls, const smtc::Track& track) {
+        if (!progressEnabled_.load() || !track.loaded) { ClearTimeline(controls); return; }
+        const unsigned settings = settings_.load();
+        const unsigned seekRevision = seekRevision_.load();
+        const bool seekable = seekingEnabled_.load();
+        const bool original = originalTime_.load();
+        const auto prefix = "deck " + std::to_string(track.deck) + " ";
+        if (track.revision != (settings >> 16)) { ClearTimeline(controls); return; }
+        const double sampledAt = std::chrono::duration<double>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        double position{}, duration{}, reverse{}, rate = 1.0;
+        std::optional<smtc::Timeline> values;
+        // 原始模式保持歌词时间轴并单独发布速度；折算模式沿用宿主折算时间。
+        const std::string timeSuffix = original ? " 'absolute'" : "";
+        if (Number(prefix + "get_time 'elapsed'" + timeSuffix, position) &&
+            Number(prefix + "get_time 'total'" + timeSuffix, duration) &&
+            Number(prefix + "reverse", reverse) &&
+            (!original || Number(prefix + "get_pitch_value", rate)))
+            // get_pitch_value 返回百分数，Windows PlaybackRate 使用倍数。
+            values = smtc::MakeTimeline(position, duration, reverse != 0, original ? rate / 100.0 : rate);
+        double loaded{};
+        if (!values || !Number(prefix + "loaded", loaded) || !loaded ||
+            Text(prefix + "get_filepath") != track.path || settings_.load() != settings ||
+            !progressEnabled_.load() || seekRevision_.load() != seekRevision) { ClearTimeline(controls); return; }
+        if (mailbox_ && WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) return;
+        const bool publish = !timelinePublished_ || forceTimeline_ ||
+            !timelineTrack_.SameIdentity(track) || timelineRevision_ != seekRevision ||
+            timelineAnchor_.NeedsUpdate(*values, track.playing, sampledAt);
+        ++progressPolls_;
+        if (!progressLogAt_) progressLogAt_ = sampledAt;
+        if (publish) {
+            ++progressPublications_;
+            if (!timelinePublished_ || !timelineTrack_.SameIdentity(track) || timelineRevision_ != seekRevision)
+                ++progressIdentityChanges_;
+            if (forceTimeline_) ++progressForcedSeeks_;
+            if (timelinePublished_) {
+                const bool stateChanged = timelineAnchor_.playing != track.playing;
+                const bool rateChanged = timelineAnchor_.value.playbackRate != values->playbackRate;
+                const bool durationChanged = timelineAnchor_.value.duration != values->duration;
+                if (stateChanged) ++progressStateChanges_;
+                if (rateChanged) ++progressRateChanges_;
+                if (durationChanged) ++progressDurationChanges_;
+                if (!stateChanged && !rateChanged && !durationChanged &&
+                    timelineAnchor_.NeedsUpdate(*values, track.playing, sampledAt)) ++progressDriftCorrections_;
+            }
+        }
+        if (publish) {
+            const auto status = track.playing ? MediaPlaybackStatus::Playing : MediaPlaybackStatus::Paused;
+            if (controls.PlaybackStatus() != status) controls.PlaybackStatus(status);
+            SystemMediaTransportControlsTimelineProperties timeline;
+            timeline.StartTime(TimeSpan{0});
+            timeline.EndTime(TimeSpan{values->duration});
+            timeline.Position(TimeSpan{values->position});
+            // 只读时收窄范围；两个开关同时开启才开放整首歌曲。
+            timeline.MinSeekTime(TimeSpan{seekable ? 0 : values->position});
+            timeline.MaxSeekTime(TimeSpan{seekable ? values->duration : values->position});
+            if (!timelinePublished_ || timelineAnchor_.value.playbackRate != values->playbackRate)
+                controls.PlaybackRate(values->playbackRate);
+            controls.UpdateTimelineProperties(timeline);
+            timelinePublished_ = true;
+            timelineAnchor_ = {*values, sampledAt, track.playing};
+            timelineTrack_ = track;
+            timelineRevision_ = seekRevision;
+            forceTimeline_ = false;
+        }
+        if (sampledAt - progressLogAt_ >= 5.0) {
+            smtc::LogEvent(smtc::LogLevel::Debug, "Progress",
+                "Timeline activity over %.2f seconds; deck=%d mode=%s valid_queries=%u publication_attempts=%u identity_or_settings_changes=%u state_changes=%u rate_changes=%u duration_changes=%u drift_corrections=%u accepted_seeks=%u position_ms=%.3f duration_ms=%.3f playback_rate=%.6f state=%s; reason counts may overlap",
+                sampledAt - progressLogAt_, track.deck, original ? "Original + Pitch" : "Adjusted",
+                progressPolls_, progressPublications_, progressIdentityChanges_, progressStateChanges_,
+                progressRateChanges_, progressDurationChanges_, progressDriftCorrections_, progressForcedSeeks_,
+                values->position / 10000.0, values->duration / 10000.0, values->playbackRate,
+                track.playing ? "Playing" : "Paused");
+            progressLogAt_ = sampledAt;
+            progressPolls_ = progressPublications_ = progressStateChanges_ = progressRateChanges_ = 0;
+            progressDurationChanges_ = progressDriftCorrections_ = progressIdentityChanges_ = progressForcedSeeks_ = 0;
+        }
+        if (mailbox_) {
+            std::lock_guard lock(mailbox_->mutex);
+            mailbox_->seekTrack = track;
+            if (!(sharingFlags_.load() & 2u)) {
+                mailbox_->seekTrack.title.clear(); mailbox_->seekTrack.artist.clear(); mailbox_->seekTrack.album.clear();
+            }
+            mailbox_->seekRevision = seekRevision;
+            mailbox_->seekDuration = !mailbox_->closed && seekable && progressEnabled_.load() &&
+                seekingEnabled_.load() && seekRevision_.load() == seekRevision && settings_.load() == settings
+                ? values->duration : 0;
+        }
+    }
     void Poll(const SystemMediaTransportControls& controls,
         const GlobalSystemMediaTransportControlsSessionManager& sessionManager,
         smtc::Track& previous, bool& published, ArtworkState& artwork) {
@@ -504,9 +721,23 @@ private:
             // 会话验证可能等待异步操作，返回后必须重新检查关闭和配置变化。
             if (WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) return;
             if (settings_.load() != settings) break;
+            if (request.action == smtc::Action::Seek) {
+                if (!progressEnabled_.load() || !seekingEnabled_.load() ||
+                    request.seekRevision != seekRevision_.load()) continue;
+                // 查询实际 Deck，防止会话验证等待期间歌曲或左右映射已改变。
+                track = ReadTrack(settings, previous);
+                double reverse{}, duration{};
+                const auto prefix = "deck " + std::to_string(track.deck) + " ";
+                if (!Number(prefix + "reverse", reverse) || reverse != 0 ||
+                    !Number(prefix + "get_time 'total'" + (originalTime_.load() ? " 'absolute'" : ""), duration) || !std::isfinite(duration) || duration <= 0 ||
+                    settings_.load() != settings || !progressEnabled_.load() || !seekingEnabled_.load() ||
+                    request.seekRevision != seekRevision_.load() ||
+                    WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) continue;
+            }
             const auto command = smtc::CommandFor(request, track, enabled, true);
             if (!command.empty()) {
                 const HRESULT result = SendCommand(command.c_str());
+                if (result == S_OK && request.action == smtc::Action::Seek) forceTimeline_ = true;
                 if (result == S_OK)
                     smtc::LogEvent(smtc::LogLevel::Info, "Control", "VirtualDJ accepted %s for Deck %d", ActionName(request.action), track.deck);
                 else smtc::LogEvent(smtc::LogLevel::Warning, "Control", "VirtualDJ did not confirm %s for Deck %d; command=%s; result=0x%08lX", ActionName(request.action), track.deck, command.c_str(), static_cast<unsigned long>(result));
@@ -514,6 +745,26 @@ private:
             } else smtc::LogEvent(smtc::LogLevel::Warning, "Control", "Request discarded: unavailable deck, disabled session, or changed track");
         }
 
+        // 进度查询和发布失败只清理时间轴，不能关闭已有媒体控制。
+        try {
+            UpdateProgress(controls, track);
+            if (progressFailed_) { Log("Playback progress sharing recovered"); progressFailed_ = false; }
+        } catch (...) {
+            if (!progressFailed_) Log("Playback progress update failed", to_hresult());
+            progressFailed_ = true;
+            try { ClearTimeline(controls); } catch (...) {}
+        }
+        // 加载间隙也立即响应关闭共享，不能让旧信息等待宽限期后才消失。
+        if (published && !(sharingFlags_.load() & 2u) && publishedInfo_) {
+            auto updater = controls.DisplayUpdater();
+            auto music = updater.MusicProperties();
+            music.Title(L""); music.Artist(L""); music.AlbumTitle(L""); updater.Update();
+            publishedInfo_ = false;
+        }
+        if (!(sharingFlags_.load() & 1u)) {
+            try { UpdateArtwork(controls, track, false, artwork); }
+            catch (...) { Log("Artwork clearing failed", to_hresult()); }
+        }
         const bool available = enabled && track.loaded;
         // 加载间隙保留会话两秒，暂停接收命令，避免 Windows 跳到其他应用。
         if (!available && enabled && published) {
@@ -557,19 +808,22 @@ private:
             artwork.pending = false;
         } else {
             const bool changed = !published || !track.SameIdentity(previous);
-            if (changed) {
+            const bool shareInfo = (sharingFlags_.load() & 2u) != 0;
+            if (changed || shareInfo != publishedInfo_ || track.metadataRead != previous.metadataRead) {
                 smtc::LogEvent(smtc::LogLevel::Info, "Session", "Track changed; deck=%d; publishing metadata and clearing previous artwork", track.deck);
                 auto updater = controls.DisplayUpdater();
-                updater.ClearAll();
+                if (changed) updater.ClearAll();
                 updater.Type(MediaPlaybackType::Music);
                 auto music = updater.MusicProperties();
-                music.Title(to_hstring(track.title));
-                music.Artist(to_hstring(track.artist));
-                music.AlbumTitle(to_hstring(track.album));
+                music.Title(shareInfo ? to_hstring(track.title) : hstring{});
+                music.Artist(shareInfo ? to_hstring(track.artist) : hstring{});
+                music.AlbumTitle(shareInfo ? to_hstring(track.album) : hstring{});
                 updater.Update();
+                publishedInfo_ = shareInfo;
             }
             if (!published || track.playing != previous.playing) {
-                controls.PlaybackStatus(track.playing ? MediaPlaybackStatus::Playing : MediaPlaybackStatus::Paused);
+                const auto status = track.playing ? MediaPlaybackStatus::Playing : MediaPlaybackStatus::Paused;
+                if (controls.PlaybackStatus() != status) controls.PlaybackStatus(status);
                 smtc::LogEvent(smtc::LogLevel::Info, "Session", "Playback state changed; deck=%d state=%s", track.deck, track.playing ? "Playing" : "Paused");
             }
             // 封面失败只影响图片，不得关闭播放控制。
@@ -585,6 +839,9 @@ private:
         {
             std::lock_guard lock(mailbox_->mutex);
             mailbox_->displayed = track;
+            if (!(sharingFlags_.load() & 2u) && track.loaded) {
+                mailbox_->displayed.title.clear(); mailbox_->displayed.artist.clear(); mailbox_->displayed.album.clear();
+            }
             mailbox_->accepting = !mailbox_->closed && enabled && (track.loaded || track.empty);
         }
     }
@@ -595,8 +852,8 @@ private:
         ATOM windowClass{};
         SystemMediaTransportControls controls{nullptr};
         GlobalSystemMediaTransportControlsSessionManager sessionManager{nullptr};
-        event_token buttonToken{};
-        bool subscribed = false;
+        event_token buttonToken{}, positionToken{};
+        bool subscribed = false, positionSubscribed = false;
         try {
 #ifdef SMTC_TESTING
             if (workerFault_) workerFault_();
@@ -652,6 +909,18 @@ private:
                 } catch (...) { Log("Media button handler failed", to_hresult()); }
             });
             subscribed = true;
+            positionToken = controls.PlaybackPositionChangeRequested(
+                [mailbox = mailbox_, sessionManager](auto const&, auto const& args) noexcept {
+                    try {
+                        std::string source;
+                        if (sessionManager) {
+                            const auto current = sessionManager.GetCurrentSession();
+                            if (current) source = to_string(current.SourceAppUserModelId());
+                        }
+                        mailbox->PushSeek(args.RequestedPlaybackPosition().count(), std::move(source));
+                    } catch (...) { Log("Playback position handler failed", to_hresult()); }
+                });
+            positionSubscribed = true;
             Log("SMTC initialized");
             smtc::Track previous;
             bool published = false;
@@ -672,7 +941,7 @@ private:
                     artwork.worker.Cancel();
                     artwork.ticket = 0;
                     artwork.pending = false;
-                    { std::lock_guard lock(mailbox_->mutex); mailbox_->accepting = false; mailbox_->requests.clear(); }
+                    { std::lock_guard lock(mailbox_->mutex); mailbox_->accepting = false; mailbox_->seekDuration = 0; mailbox_->requests.clear(); }
                     try {
                         controls.IsPlayEnabled(false);
                         controls.IsPauseEnabled(false);
@@ -696,6 +965,7 @@ private:
         mailbox_->Close();
         if (controls) {
             if (subscribed) { try { controls.ButtonPressed(buttonToken); } catch (...) {} }
+            if (positionSubscribed) { try { controls.PlaybackPositionChangeRequested(positionToken); } catch (...) {} }
             try {
                 controls.PlaybackStatus(MediaPlaybackStatus::Closed);
                 controls.IsEnabled(false);

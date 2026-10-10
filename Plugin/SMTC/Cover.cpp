@@ -1,4 +1,4 @@
-#define WIN32_LEAN_AND_MEAN
+﻿#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <winhttp.h>
 #include <shlwapi.h>
@@ -157,7 +157,7 @@ ImageBytes DownloadArtwork(const std::wstring& url, const Cancelled& cancelled) 
     if (!WinHttpCrackUrl(url.c_str(), 0, 0, &parts) ||
         (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS) ||
         parts.dwUserNameLength || parts.dwPasswordLength) return {};
-    Http session(WinHttpOpen(L"VirtualDJ-SMTC/0.1.1", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    Http session(WinHttpOpen(L"VirtualDJ-SMTC/0.1.2", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
     if (!session) return {};
     WinHttpSetTimeouts(session.get(), 1000, 1000, 1000, 1000);

@@ -1,4 +1,4 @@
-VirtualDJ SMTC Bridge 0.1.1 — third-party notices
+﻿VirtualDJ SMTC Bridge 0.1.2 — third-party notices
 
 TagLib 2.2 — Copyright TagLib authors.
 Used unmodified under the Mozilla Public License 1.1 alternative.
