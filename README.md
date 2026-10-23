@@ -48,7 +48,7 @@
 <ol>
 <li>
 
-从 [Releases](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) 下载最新发行版 **dll** 文件 (当前为 [v0.1.2](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.2)).
+从 [Releases](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) 下载最新发行版 **dll** 文件 (当前为 [v0.1.3](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.3)).
 
 </li>
 <li>

@@ -23,6 +23,7 @@ using Http = std::unique_ptr<void, HttpCloser>;
 
 bool IsImage(const ImageBytes& bytes) {
     // 按需读取首帧尺寸，限制压缩数据及宽高；不会主动解码整幅像素。
+    // Read only the first-frame dimensions and limit encoded size and dimensions without decoding all pixels.
     if (bytes.empty() || bytes.size() > MaxArtworkBytes) return false;
     winrt::com_ptr<IWICImagingFactory> factory;
     if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
@@ -55,6 +56,7 @@ bool SamePath(const std::wstring& a, const std::wstring& b) {
 
 ImageBytes Resolve(const std::string& path, const std::string& home, const Cancelled& cancelled) {
     // 只有 netsearch:// 走主数据库；本地文件只读标签，不查库或联网。
+    // Only netsearch:// uses the main database; local files use embedded tags without database or network access.
     const std::wstring widePath(winrt::to_hstring(path));
     const bool online = IsNetSearchPath(widePath);
     if (!online) {
@@ -62,7 +64,7 @@ ImageBytes Resolve(const std::string& path, const std::string& home, const Cance
         if (cancelled()) return {};
         if (IsImage(bytes)) { LogEvent(LogLevel::Info, "Artwork", "Embedded tag image found; bytes=%zu", bytes.size()); return bytes; }
         LogEvent(LogLevel::Info, "Artwork", "No usable embedded cover in local file; database lookup skipped");
-        return {}; // 本地曲目不查询数据库。
+        return {}; // 本地曲目不查询数据库。 / Do not query the database for local tracks.
     }
     if (cancelled()) return {};
     if (home.empty()) { LogEvent(LogLevel::Warning, "Artwork", "Online cover lookup skipped: VirtualDJ data folder is unavailable"); return {}; }
@@ -117,6 +119,7 @@ ImageBytes ReadEmbeddedArtwork(const std::wstring& path) {
 std::wstring FindCoverLink(const std::wstring& database, const std::wstring& track,
     const Cancelled& cancelled) {
     // 流式只读 XML，禁止 DTD，限制深度、文件大小和扫描时间。
+    // Stream XML read-only, prohibit DTDs and bound depth, file size and scan time.
     winrt::com_ptr<IStream> input;
     if (FAILED(SHCreateStreamOnFileEx(database.c_str(), STGM_READ | STGM_SHARE_DENY_NONE,
         FILE_ATTRIBUTE_NORMAL, FALSE, nullptr, input.put()))) return {};
@@ -157,7 +160,7 @@ ImageBytes DownloadArtwork(const std::wstring& url, const Cancelled& cancelled) 
     if (!WinHttpCrackUrl(url.c_str(), 0, 0, &parts) ||
         (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS) ||
         parts.dwUserNameLength || parts.dwPasswordLength) return {};
-    Http session(WinHttpOpen(L"VirtualDJ-SMTC/0.1.2", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    Http session(WinHttpOpen(L"VirtualDJ-SMTC/0.1.3", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
         WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
     if (!session) return {};
     WinHttpSetTimeouts(session.get(), 1000, 1000, 1000, 1000);
@@ -174,6 +177,7 @@ ImageBytes DownloadArtwork(const std::wstring& url, const Cancelled& cancelled) 
         WINHTTP_NO_REFERER, accept, parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0));
     if (!request) return {};
     // 封面请求不继承浏览器登录信息、Cookie 或 Windows 自动认证。
+    // Cover requests do not inherit browser credentials, cookies or automatic Windows authentication.
     DWORD disabled = WINHTTP_DISABLE_COOKIES;
     WinHttpSetOption(request.get(), WINHTTP_OPTION_DISABLE_FEATURE, &disabled, sizeof(disabled));
     DWORD auth = WINHTTP_AUTOLOGON_SECURITY_LEVEL_HIGH;
@@ -203,11 +207,13 @@ ImageBytes DownloadArtwork(const std::wstring& url, const Cancelled& cancelled) 
     if (WinHttpSetStatusCallback(request.get(), AsyncState::Callback,
         WINHTTP_CALLBACK_FLAG_ALL_COMPLETIONS | WINHTTP_CALLBACK_FLAG_HANDLES, 0) == WINHTTP_INVALID_STATUS_CALLBACK) return {};
     // 取消请求后仍可能回调，直到 HANDLE_CLOSING 才释放句柄持有的上下文引用。
+    // Callbacks can arrive after cancellation; retain handle-owned context until HANDLE_CLOSING.
     state->refs.fetch_add(1);
     Http active(request.release());
     const auto started = Clock::now();
     const auto wait = [&](DWORD expected) {
         // 整个下载共享五秒期限，每 25 ms 检查取消，避免旧请求拖延切歌。
+        // Use a shared five-second download deadline and check cancellation every 25 ms to avoid delaying track changes.
         while (!cancelled() && Clock::now() - started < std::chrono::seconds(5)) {
             const DWORD result = WaitForSingleObject(state->done, 25);
             if (result == WAIT_OBJECT_0) return state->status.load() == expected && !cancelled();
@@ -241,6 +247,7 @@ ArtworkWorker::~ArtworkWorker() {
 }
 std::uint64_t ArtworkWorker::Request(std::string path, std::string home) {
     // 已退出的线程仍有可回收句柄；仅在新任务到来时重建，不循环重试失败曲目。
+    // An exited thread remains joinable; recreate it on a new request without retrying failed tracks in a loop.
     std::lock_guard lifecycle(lifecycleMutex_);
     if (!running_.load()) {
         if (thread_.joinable()) thread_.join();

@@ -2,6 +2,12 @@
 
 [中文](CHANGELOG.md) · **English**
 
+## v0.1.3
+
+### 🤨 What's Changed
+
+- Added bilingual Chinese and English comments to plugin-owned source files.
+
 ## v0.1.2
 
 ### 🤨 What's Changed

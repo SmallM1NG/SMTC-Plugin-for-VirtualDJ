@@ -2,7 +2,7 @@
 
 **中文** · [English](DEVELOPMENT_en.md)
 
-本文说明 v0.1.2 的实现. [更新记录](CHANGELOG.md).
+本文说明 v0.1.3 的实现. [更新记录](CHANGELOG.md).
 
 ## 构建基础
 
