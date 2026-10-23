@@ -29,7 +29,8 @@ namespace {
 HMODULE g_module{};
 std::atomic<bool> g_owned{false};
 // 发布时更新此版本；按钮文字和 Release 地址自动跟随。
-constexpr char kVersion[] = "0.1.2";
+// Update this version for each release; the button label and release URL follow it.
+constexpr char kVersion[] = "0.1.3";
 const std::string kVersionLabel = std::string("Version ") + kVersion;
 const std::string kReleaseUrl =
     std::string("https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v") + kVersion;
@@ -44,6 +45,7 @@ void Log(const char* message, HRESULT hr = S_OK) noexcept {
         "Bridge", "%s; Windows error code=0x%08lX", message, static_cast<unsigned long>(hr));
 }
 // 等待 WinRT 操作时监听停止事件；只有成功完成后才允许调用 GetResults。
+// Observe the stop event while waiting for WinRT; read results only after successful completion.
 template<class Operation>
 bool WaitForAsync(const Operation& operation, HANDLE stop, const char* description,
     std::chrono::milliseconds timeout = std::chrono::seconds(1)) {
@@ -97,10 +99,12 @@ const char* SourceName(int deck) noexcept {
 }
 struct Mailbox {
     // Windows 回调只入队；宿主查询与命令统一由桥接线程执行。
+    // Windows callbacks only enqueue requests; the bridge thread performs host queries and commands.
     std::mutex mutex;
     std::deque<smtc::Request> requests;
     smtc::Track displayed;
     // 跳转快照与时间轴一起发布，不能使用尚未更新的 displayed。
+    // Publish the seek snapshot with the timeline rather than using the not-yet-updated displayed track.
     smtc::Track seekTrack;
     std::int64_t seekDuration = 0;
     unsigned seekRevision = 0;
@@ -126,6 +130,7 @@ struct Mailbox {
         if (closed || !seekTrack.loaded || seekDuration <= 0 || position < 0 ||
             position > seekDuration) return;
         // 连续拖动合并到最新请求，并保留播放、切歌命令的顺序。
+        // Coalesce dragging to the latest request while preserving playback and track-command ordering.
         std::erase_if(requests, [](const auto& request) { return request.action == smtc::Action::Seek; });
         if (requests.size() >= 32) return;
         requests.push_back({smtc::Action::Seek, seekTrack, std::move(source),
@@ -219,10 +224,12 @@ public:
             if (!mailbox_->stop || !mailbox_->wake) throw_last_error();
 
             // 撤销订阅后仍可能有迟到回调；固定 DLL，回调仅持有共享邮箱和会话管理器，不持有插件对象。
+            // Pin the DLL for late callbacks; callbacks retain only the shared mailbox and session manager, not the plugin.
             HMODULE pinned{};
             if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
                 GET_MODULE_HANDLE_EX_FLAG_PIN, reinterpret_cast<LPCWSTR>(&g_module), &pinned)) throw_last_error();
             // 创建前置为运行中，避免新线程尚未开始时被误判为已退出。
+            // Mark the worker running before creation so a not-yet-started thread is not mistaken for an exited worker.
             workerRunning_.store(true);
             worker_ = std::thread([this] { Run(); });
             Log("Enable SMTC: worker started");
@@ -260,12 +267,14 @@ public:
         }
         if (id == 11) {
             // 按钮在按下和松开时都通知宿主，仅在首次按下时打开页面。
+            // The host reports both press and release; open the page only on the first press.
             if (versionButton_ && !versionHeld_)
                 OpenProjectPage(kReleaseUrl.c_str(), "Version release");
             versionHeld_ = versionButton_ != 0;
         }
         if (id == 5) {
             // 保留滚轮的微小增量，只对实际来源进行分档。
+            // Preserve small wheel increments and quantize only the selected source.
             deck_ = std::isfinite(deck_) ? std::clamp(deck_, 0.f, 1.f) : 1.f;
         }
         if (id == 10) {
@@ -318,18 +327,19 @@ private:
     int enabled_ = 1;
     int shareProgress_ = 1, allowSeeking_ = 1;
     int shareCover_ = 1, shareInfo_ = 1;
-    std::atomic<unsigned> sharingFlags_{3}; // 位 0 为封面，位 1 为文字信息。
+    std::atomic<unsigned> sharingFlags_{3}; // 位 0 为封面，位 1 为文字信息。 / Bit 0 controls cover sharing; bit 1 controls text information.
     std::atomic<unsigned> coverRevision_{0};
-    bool publishedInfo_ = true; // 仅由桥接线程访问。
+    bool publishedInfo_ = true; // 仅由桥接线程访问。 / Accessed only by the bridge thread.
     std::atomic<bool> seekingEnabled_{true};
     std::atomic<unsigned> seekRevision_{0};
     std::atomic<bool> progressEnabled_{true};
-    bool timelinePublished_ = false; // 仅由桥接线程访问。
+    bool timelinePublished_ = false; // 仅由桥接线程访问。 / Accessed only by the bridge thread.
     smtc::TimelineAnchor timelineAnchor_;
     smtc::Track timelineTrack_;
     unsigned timelineRevision_ = 0;
     bool forceTimeline_ = false;
     // 进度日志每五秒汇总，避免逐帧写入影响播放。
+    // Summarize progress logs every five seconds to avoid per-frame disk writes.
     double progressLogAt_ = 0;
     unsigned progressPolls_ = 0, progressPublications_ = 0;
     unsigned progressStateChanges_ = 0, progressRateChanges_ = 0;
@@ -345,13 +355,14 @@ private:
     float deck_ = 1.f, polling_ = smtc::DefaultPollingValue;
     std::atomic<unsigned> pollingMs_{100};
     // 原子设置字包含启用位、来源和修订号，避免工作线程读取混合配置。
+    // Pack enable, source and revision into one atomic word to prevent mixed settings.
     std::atomic<unsigned> settings_{1};
     bool owns_ = false;
     std::mutex runtimeMutex_;
     std::thread worker_;
     std::atomic<bool> workerRunning_{false};
     std::shared_ptr<Mailbox> mailbox_;
-    std::set<std::string> failedQueries_; // 仅由桥接线程访问。
+    std::set<std::string> failedQueries_; // 仅由桥接线程访问。 / Accessed only by the bridge thread.
     std::chrono::steady_clock::time_point missingTrackSince_{};
 
     void RecordQuery(const std::string& query, HRESULT result) {
@@ -389,6 +400,7 @@ private:
         const bool original = smtc::OriginalTimeFromSlider(timeMode_);
         const bool modeChanged = originalTime_.exchange(original) != original;
         // 模式切换会改变时间单位语义，丢弃旧模式下尚未执行的位置请求。
+        // Mode changes alter time semantics; discard pending seeks from the previous mode.
         if (progressChanged || seekingChanged || modeChanged) seekRevision_.fetch_add(1);
         if (modeChanged) smtc::LogEvent(smtc::LogLevel::Info, "Settings",
             "Progress time mode changed; mode=%s", original ? "Original + Pitch" : "Adjusted");
@@ -413,6 +425,7 @@ private:
 
     void StopRuntime() noexcept {
         // 先拒绝回调并唤醒线程，再等待退出，最后释放邮箱和宿主引用。
+        // Reject callbacks and wake the worker before joining; release mailbox and host references last.
         if (mailbox_) mailbox_->Close();
         if (worker_.joinable()) worker_.join();
         workerRunning_.store(false);
@@ -451,6 +464,7 @@ private:
 
     smtc::Track ReadTrack(unsigned settings, const smtc::Track& previous) {
         // 同曲复用文字；切歌或设置修订后刷新，不重复查询标签。
+        // Reuse same-track text; refresh after track or settings revisions rather than polling tags repeatedly.
         smtc::Track track;
         track.deck = static_cast<int>((settings >> 8) & 0xff);
         track.revision = settings >> 16;
@@ -459,6 +473,7 @@ private:
             const char* query = track.deck == 5 ? "deck left get_deck" :
                 track.deck == 6 ? "deck right get_deck" : "get_activedeck";
             // 将逻辑来源解析成真实 Deck，后续命令绑定此快照，避免左右映射变化时误控。
+            // Resolve logical sources to a concrete deck and bind commands to that snapshot.
             if (!Number(query, master) || master < 1 || master > 99 || std::floor(master) != master) {
                 track.deck = 0;
                 return track;
@@ -476,6 +491,7 @@ private:
         if (track.path.empty()) { track.loaded = false; return track; }
         if (!(sharingFlags_.load() & 2u)) {
             // 关闭信息共享时仍保留曲目路径供播放控制、封面与时间轴使用。
+            // Keep the track path for playback controls, cover and timeline even when text sharing is disabled.
         } else if (track.SameIdentity(previous) && previous.metadataRead) {
             track.metadataRead = true;
             track.title = previous.title; track.artist = previous.artist; track.album = previous.album;
@@ -490,6 +506,7 @@ private:
         }
 
         // 宿主查询不是事务；再次检查路径，丢弃查询期间发生切歌的快照。
+        // Host queries are not transactional; recheck the path and discard snapshots spanning a track change.
         double stillLoaded{};
         if (!Number(prefix + "loaded", stillLoaded) || !stillLoaded ||
             Text(prefix + "get_filepath") != track.path) track.loaded = false;
@@ -519,6 +536,7 @@ private:
             return;
         }
         // 每次换歌或重新启用封面只发起一次任务；修订号拦截关闭后的旧结果。
+        // Start one task per track visit or cover re-enable; revisions reject results from before disabling.
         changed = changed || !artwork.active || artwork.revision != revision;
         artwork.active = true;
         artwork.revision = revision;
@@ -547,6 +565,7 @@ private:
         writer.WriteBytes(result->image);
         auto store = writer.StoreAsync();
         // 完成回调仅保留流与写入器，不访问插件；取消后的迟到完成仍有有效资源。
+        // Completion retains only the stream and writer so late completion after cancellation keeps resources alive.
         store.Completed([writer, stream](const auto&, AsyncStatus) noexcept {});
         if (!WaitForAsync(store, mailbox_ ? mailbox_->stop : nullptr, "Artwork stream write")) {
             if (mailbox_ && WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) return;
@@ -568,6 +587,7 @@ private:
     bool IsCurrentWindowsSession(const GlobalSystemMediaTransportControlsSessionManager& manager,
         const smtc::Request& request) noexcept {
         // 播放/暂停不按当前会话过滤；Windows 当前会话可能晚于指定卡片命令更新。
+        // Do not filter play/pause by the current session, which can lag a command targeting a specific card.
         if (request.action == smtc::Action::Play || request.action == smtc::Action::Pause) return true;
         if (!manager) return true;
         try {
@@ -627,12 +647,14 @@ private:
         double position{}, duration{}, reverse{}, rate = 1.0;
         std::optional<smtc::Timeline> values;
         // 原始模式保持歌词时间轴并单独发布速度；折算模式沿用宿主折算时间。
+        // Original mode preserves lyric timestamps and publishes rate separately; adjusted mode uses host-adjusted time.
         const std::string timeSuffix = original ? " 'absolute'" : "";
         if (Number(prefix + "get_time 'elapsed'" + timeSuffix, position) &&
             Number(prefix + "get_time 'total'" + timeSuffix, duration) &&
             Number(prefix + "reverse", reverse) &&
             (!original || Number(prefix + "get_pitch_value", rate)))
             // get_pitch_value 返回百分数，Windows PlaybackRate 使用倍数。
+            // get_pitch_value returns a percentage; Windows PlaybackRate expects a multiplier.
             values = smtc::MakeTimeline(position, duration, reverse != 0, original ? rate / 100.0 : rate);
         double loaded{};
         if (!values || !Number(prefix + "loaded", loaded) || !loaded ||
@@ -668,6 +690,7 @@ private:
             timeline.EndTime(TimeSpan{values->duration});
             timeline.Position(TimeSpan{values->position});
             // 只读时收窄范围；两个开关同时开启才开放整首歌曲。
+            // Use a zero-width range in read-only mode; both switches must be enabled to expose the full track.
             timeline.MinSeekTime(TimeSpan{seekable ? 0 : values->position});
             timeline.MaxSeekTime(TimeSpan{seekable ? values->duration : values->position});
             if (!timelinePublished_ || timelineAnchor_.value.playbackRate != values->playbackRate)
@@ -719,12 +742,14 @@ private:
             if (settings_.load() != settings) break;
             if (!IsCurrentWindowsSession(sessionManager, request)) continue;
             // 会话验证可能等待异步操作，返回后必须重新检查关闭和配置变化。
+            // Session validation can await asynchronous work; recheck stop and settings afterward.
             if (WaitForSingleObject(mailbox_->stop, 0) == WAIT_OBJECT_0) return;
             if (settings_.load() != settings) break;
             if (request.action == smtc::Action::Seek) {
                 if (!progressEnabled_.load() || !seekingEnabled_.load() ||
                     request.seekRevision != seekRevision_.load()) continue;
                 // 查询实际 Deck，防止会话验证等待期间歌曲或左右映射已改变。
+                // Read the concrete deck again in case the track or left/right mapping changed during validation.
                 track = ReadTrack(settings, previous);
                 double reverse{}, duration{};
                 const auto prefix = "deck " + std::to_string(track.deck) + " ";
@@ -746,6 +771,7 @@ private:
         }
 
         // 进度查询和发布失败只清理时间轴，不能关闭已有媒体控制。
+        // Progress failure clears only the timeline and must not disable existing media controls.
         try {
             UpdateProgress(controls, track);
             if (progressFailed_) { Log("Playback progress sharing recovered"); progressFailed_ = false; }
@@ -755,6 +781,7 @@ private:
             try { ClearTimeline(controls); } catch (...) {}
         }
         // 加载间隙也立即响应关闭共享，不能让旧信息等待宽限期后才消失。
+        // Honor disabled sharing during loading gaps without waiting for the availability grace period.
         if (published && !(sharingFlags_.load() & 2u) && publishedInfo_) {
             auto updater = controls.DisplayUpdater();
             auto music = updater.MusicProperties();
@@ -767,6 +794,7 @@ private:
         }
         const bool available = enabled && track.loaded;
         // 加载间隙保留会话两秒，暂停接收命令，避免 Windows 跳到其他应用。
+        // Keep the session for two seconds during loading and reject commands to avoid switching Windows to another app.
         if (!available && enabled && published) {
             const auto now = std::chrono::steady_clock::now();
             if (missingTrackSince_ == std::chrono::steady_clock::time_point{}) {
@@ -786,6 +814,7 @@ private:
         if (available) missingTrackSince_ = {};
         if (available != published || track.empty != previous.empty) {
             // 空 Deck 保留播放能力；所有能力关闭可能让 Windows 隐藏会话。
+            // Keep play available on an empty deck; disabling every capability can hide the session in Windows.
             controls.IsPlayEnabled(true);
             controls.IsPauseEnabled(available || track.empty);
             controls.IsNextEnabled(available || track.empty);
@@ -827,6 +856,7 @@ private:
                 smtc::LogEvent(smtc::LogLevel::Info, "Session", "Playback state changed; deck=%d state=%s", track.deck, track.playing ? "Playing" : "Paused");
             }
             // 封面失败只影响图片，不得关闭播放控制。
+            // Cover failures affect only the image, not playback controls.
             try { UpdateArtwork(controls, track, changed, artwork); }
             catch (...) {
                 Log("Artwork publication failed", to_hresult());
@@ -867,6 +897,7 @@ private:
             windowClass = RegisterClassW(&wc);
             if (!windowClass) throw_last_error();
             // SMTC 需要隐藏的顶层窗口；窗口及消息泵全由桥接线程管理。
+            // SMTC requires a hidden top-level window; the bridge thread owns its window and message pump.
             window = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, wc.lpszClassName,
                 L"VirtualDJ SMTC", WS_OVERLAPPED, 0, 0, 0, 0, nullptr, nullptr, g_module, nullptr);
             if (!window) throw_last_error();
@@ -977,9 +1008,11 @@ private:
         if (window) DestroyWindow(window);
         if (windowClass) UnregisterClassW(MAKEINTATOM(windowClass), g_module);
         // 在退出 COM apartment 之前释放该线程持有的 WinRT 会话管理器。
+        // Release the thread-owned WinRT session manager before leaving its COM apartment.
         sessionManager = nullptr;
         if (apartment) uninit_apartment();
         // 清理完所有线程资源后才允许宿主回收并重新创建线程。
+        // Allow worker reclamation and recreation only after all thread resources have been cleaned up.
         workerRunning_.store(false);
     }
 };

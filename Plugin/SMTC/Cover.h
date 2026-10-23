@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -15,10 +15,12 @@ using ImageBytes = std::vector<std::uint8_t>;
 using Cancelled = std::function<bool()>;
 constexpr std::size_t MaxArtworkBytes = 10 * 1000 * 1000;
 // 10 MB（10,000,000 字节）是插件自设保护值，并非 SMTC 接口的强制上限。
+// The 10 MB (10,000,000 bytes) limit is plugin policy, not an SMTC API requirement.
 bool IsNetSearchPath(std::string_view path) noexcept;
 bool IsNetSearchPath(std::wstring_view path) noexcept;
 
 // 只读文件标签并返回内嵌图片，不修改文件，不使用文件图标。
+// Read embedded artwork from file tags without modifying the file or using its icon.
 ImageBytes ReadEmbeddedArtwork(const std::wstring& path);
 std::wstring FindCoverLink(const std::wstring& database, const std::wstring& track,
     const Cancelled& cancelled = [] { return false; });
@@ -26,6 +28,7 @@ ImageBytes DownloadArtwork(const std::wstring& url, const Cancelled& cancelled);
 
 class ArtworkWorker {
     // 只保留最新任务与结果；generation 变化即取消旧任务，无历史缓存。
+    // Keep only the latest task and result; generation changes cancel old tasks, with no history cache.
 public:
     struct Result { std::uint64_t ticket; ImageBytes image; };
     explicit ArtworkWorker(std::function<void()> ready = {});

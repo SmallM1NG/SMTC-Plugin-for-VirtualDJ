@@ -1,5 +1,3 @@
-<!-- Layout source: https://github.com/SmallM1NG/NCM-Auto-Dump-Tool/blob/HEAD/README.md -->
-
 <p align="center">
   <img width="72%" alt="SMTC Plugin for VirtualDJ" src="Docs/imgs/title.png">
 </p>
@@ -48,7 +46,7 @@ This plugin supports only **VirtualDJ 2021 and later on Windows x64** and requir
 <ol>
 <li>
 
-Download the **dll** file from the latest [release](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) (currently [v0.1.2](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.2)).
+Download the **dll** file from the latest [release](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) (currently [v0.1.3](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.3)).
 
 </li>
 <li>

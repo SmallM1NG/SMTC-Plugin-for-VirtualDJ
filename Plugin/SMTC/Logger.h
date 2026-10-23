@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <windows.h>
 #include <cstdio>
 #include <cstdarg>
@@ -18,6 +18,7 @@ inline const char* LevelName(LogLevel level) noexcept {
 }
 class LogSink {
     // 由外层 mutex 串行写入和关闭；仅写同目录单文件，超过 10 MiB 清空。
+    // The outer mutex serializes writes and closing; use one adjacent file and clear it above 10 MiB.
 public:
     std::mutex mutex;
     ~LogSink() { Close(); }
@@ -41,6 +42,7 @@ public:
         if (Append(line, length)) return;
         Close();
         // 写入失败后停止文件日志；显式关闭后才允许下一次启用重新尝试。
+        // Stop file logging after a write failure; explicit closing permits a later enable to retry.
         disabled_ = true;
     }
 private:
@@ -75,6 +77,7 @@ inline void CloseLog() noexcept {
     try { auto& sink = Logger(); std::lock_guard lock(sink.mutex); sink.Close(); } catch (...) {}
 }
 // 运行日志仅用英语，不记录曲名、路径、网址或本地化系统错误。
+// Write English logs only; omit track names, paths, URLs and localized system errors.
 inline void LogEvent(LogLevel level, const char* category, const char* format, ...) noexcept {
     try {
         char content[1536]{};

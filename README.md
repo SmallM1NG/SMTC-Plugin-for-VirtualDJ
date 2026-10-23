@@ -1,5 +1,3 @@
-<!-- 模板来源: https://github.com/SmallM1NG/NCM-Auto-Dump-Tool/blob/HEAD/README.md -->
-
 <p align="center">
   <img width="72%" alt="SMTC Plugin for VirtualDJ" src="Docs/imgs/title.png">
 </p>
@@ -48,7 +46,7 @@
 <ol>
 <li>
 
-从 [Releases](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) 下载最新发行版 **dll** 文件 (当前为 [v0.1.2](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.2)).
+从 [Releases](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) 下载最新发行版 **dll** 文件 (当前为 [v0.1.3](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.3)).
 
 </li>
 <li>
