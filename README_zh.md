@@ -14,7 +14,7 @@
 
 <p align="center"><a href="README.md">English</a> · <b>中文</b></p>
 
-<p align="center"><a href="#项目介绍">项目介绍</a> · <a href="#功能展示">功能展示</a> · <a href="#如何安装">如何安装</a> · <a href="#如何使用">如何使用</a> · <a href="#其他内容">其他内容</a> · <a href="Docs/md/DEVELOPMENT.md">开发相关</a> · <a href="Docs/md/CHANGELOG.md">更改日志</a></p>
+<p align="center"><a href="#项目介绍">项目介绍</a> · <a href="#功能展示">功能展示</a> · <a href="#如何安装">如何安装</a> · <a href="#如何使用">如何使用</a> · <a href="#其他内容">其他内容</a> · <a href="Docs/md/DEVELOPMENT_zh.md">开发相关</a> · <a href="Docs/md/CHANGELOG_zh.md">更改日志</a></p>
 
 ---
 
@@ -102,7 +102,7 @@
 <a id="其他内容"></a>
 ## 其他内容 📚
 
-<p align="center"><a href="Docs/md/DEVELOPMENT.md">开发相关</a> · <a href="Docs/md/CHANGELOG.md">更改日志</a></p>
+<p align="center"><a href="Docs/md/DEVELOPMENT_zh.md">开发相关</a> · <a href="Docs/md/CHANGELOG_zh.md">更改日志</a></p>
 
 ### 补充说明 💡
 
