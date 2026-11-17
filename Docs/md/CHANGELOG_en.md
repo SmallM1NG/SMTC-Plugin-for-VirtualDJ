@@ -28,4 +28,4 @@
 ## v0.1.0
 
 - First public version.
-- For detailed instructions, please check the [README](../../README_en.md).
+- For detailed instructions, please check the [README](../../README.md).

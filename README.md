@@ -12,141 +12,141 @@
 	<a href="https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/SmallM1NG/SMTC-Plugin-for-VirtualDJ?style=for-the-badge"></a>
 </p>
 
-<p align="center"><b>中文</b> · <a href="README_en.md">English</a></p>
+<p align="center"><a href="README_zh.md">中文</a> · <b>English</b></p>
 
-<p align="center"><a href="#项目介绍">项目介绍</a> · <a href="#功能展示">功能展示</a> · <a href="#如何安装">如何安装</a> · <a href="#如何使用">如何使用</a> · <a href="#其他内容">其他内容</a> · <a href="Docs/md/DEVELOPMENT.md">开发相关</a> · <a href="Docs/md/CHANGELOG.md">更改日志</a></p>
-
----
-
-<a id="项目介绍"></a>
-## 项目介绍 ℹ️
-
-这是一款可以将你的 VirtualDJ 接入 Windows SMTC (系统媒体传输控制) 的插件.
-
-插件可以向 Windows 共享当前曲目的标题, 艺术家, 专辑, 封面, 播放状态, 当前位置和总时长, 也支持通过系统媒体按钮控制播放, 暂停, 上一首和下一首, 以及通过支持进度控制的软件跳转播放位置. 支持 SMTC 的软件都可以获取信息或调用控制, 例如 Wallpaper Engine.
-
-使用 VirtualDJ 内置设置界面, 支持选择 Deck 1-4, Left, Right 或 Master 作为信息与控制来源.
-
-本地曲目封面从文件标签中读取, 网络曲目封面通过 VirtualDJ 主数据库中的封面链接获取.
-
-> 本项目以 [GPLv3](LICENSE) 开源, 使用, 修改或分发时请遵守该协议.
-
-<a id="功能展示"></a>
-## 功能展示 ✨
-
-<div align="center"><img width="1024" src="Docs/imgs/demo.webp" alt="VirtualDJ SMTC 功能展示"></div>
+<p align="center"><a href="#project-introduction">Project Introduction</a> · <a href="#feature-showcase">Feature Showcase</a> · <a href="#how-to-install">How to Install</a> · <a href="#how-to-use">How to Use</a> · <a href="#additional-information">Additional Information</a> · <a href="Docs/md/DEVELOPMENT_en.md">Development</a> · <a href="Docs/md/CHANGELOG_en.md">Changelog</a></p>
 
 ---
 
-<a id="如何安装"></a>
-## 如何安装 📥
+<a id="project-introduction"></a>
+## Project Introduction ℹ️
 
-本插件仅支持 **Windows x64** 的 **VirtualDJ 2021 及以上版本**, 需拥有 **VirtualDJ Pro** 许可证才可使用.
+This plugin connects your VirtualDJ to Windows SMTC (System Media Transport Controls).
+
+It shares the current track's title, artist, album, artwork, playback state, position and duration with Windows. System media buttons can control play, pause, previous track and next track, and applications supporting position control can request a seek. SMTC-compatible applications, such as Wallpaper Engine, can access this information or send playback commands.
+
+The plugin uses VirtualDJ's built-in settings interface and lets you choose Deck 1-4, Left, Right or Master as the source for track information and playback control.
+
+Local artwork is read from embedded file tags. Artwork for online tracks is retrieved using cover links in VirtualDJ's main database.
+
+> This project is open source under [GPLv3](LICENSE). Please comply with the license when using, modifying or distributing it.
+
+<a id="feature-showcase"></a>
+## Feature Showcase ✨
+
+<div align="center"><img width="1024" src="Docs/imgs/demo.webp" alt="VirtualDJ SMTC demo"></div>
+
+---
+
+<a id="how-to-install"></a>
+## How to Install 📥
+
+This plugin supports only **VirtualDJ 2021 and later on Windows x64** and requires a **VirtualDJ Pro** license.
 
 <ol>
 <li>
 
-从 [Releases](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) 下载最新发行版 **dll** 文件 (当前为 [v0.1.3](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.3)).
+Download the **dll** file from the latest [release](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/latest) (currently [v0.1.3](https://github.com/SmallM1NG/SMTC-Plugin-for-VirtualDJ/releases/tag/v0.1.3)).
 
 </li>
 <li>
 
-将 **SMTC.dll** 放入 VirtualDJ 数据目录的 **Plugins64\AutoStart** 文件夹中.
+Place **SMTC.dll** in the **Plugins64\AutoStart** folder inside your VirtualDJ data directory.
 
-2023之前的版本, 通常在 `C:\Users\用户名\Documents\VirtualDJ\Plugins64\AutoStart`  
-2023之后的版本, 通常在 `C:\Users\用户名\AppData\Local\VirtualDJ\Plugins64\AutoStart`  
-如果你更改了数据目录, 请放入你自定义的数据目录内.
+Versions before 2023 typically use `C:\Users\YourUsername\Documents\VirtualDJ\Plugins64\AutoStart`.  
+Versions after 2023 typically use `C:\Users\YourUsername\AppData\Local\VirtualDJ\Plugins64\AutoStart`.  
+If you changed the data directory, use your custom data directory.
 
 </li>
 <li>
 
-启动 VirtualDJ, 在 Master 效果列表中看到 **SMTC** 字样, 则为安装成功.
+Start VirtualDJ. Installation is successful when **SMTC** appears in the Master effects list.
 
 </li>
 </ol>
 
 ---
 
-<a id="如何使用"></a>
-## 如何使用 ▶️
+<a id="how-to-use"></a>
+## How to Use ▶️
 
-### 1. 自动启动
+### 1. Automatic Startup
 
-插件默认会随 VirtualDJ 启动而自行开启, 无需手动开启.
+The plugin starts automatically with VirtualDJ by default. No manual activation is required.
 
-### 2. 调整设置
+### 2. Adjust Settings
 
-如果你想调整来源等设置, 在 Master 效果列表内找到 **SMTC** 字样, 点击旁边的小齿轮打开内置设置页面.
+To adjust the source or other settings, find **SMTC** in the Master effects list and click the small gear icon next to it to open the built-in settings page.
 
 <p align="center">
-  <img src="Docs/imgs/settings.png" alt="SMTC 设置入口示意">
+  <img src="Docs/imgs/settings.png" alt="SMTC settings entry reference">
 </p>
 
-以下五项开关默认均启用, 已保存的设置会由 VirtualDJ 恢复.
+The following five switches default to enabled. VirtualDJ restores previously saved settings.
 
-- **Enable SMTC**: 控制插件功能的启用和停用.
-- **Share Cover**: 控制是否共享封面, 默认启用. 关闭时清除封面并取消获取任务, 重新启用后获取当前曲目封面.
-- **Share Track Info**: 控制是否共享标题, 艺术家和专辑, 默认启用. 关闭时清除这些信息并停止文字标签查询, 重新启用后读取当前曲目.
-- **Share Progress**: 控制是否共享播放进度, 默认启用. 开启后按 Timeline Mode 共享当前位置和总时长; 可配合 Enable Seeking 开启跳转.
-- **Enable Seeking**: 控制是否允许通过 SMTC 跳转播放位置, 默认启用, 紧凑界面短名称为 Seeking. 需要同时开启 Share Progress; 播放或暂停状态保持不变.
-- **Timeline Mode**: 选择进度时间轴, 默认 Original + Pitch. Original + Pitch 共享原始位置, 原始总时长和实际播放速率, 更适合歌词时间轴; Adjusted 共享随速度折算的位置和总时长, 播放速率保持 1.
-- **Source Deck**: 选择 Deck 1-4, Left, Right 或 Master 作为曲目信息和播放控制的来源.
-- **Polling Interval**: 设置曲目信息和播放状态的查询间隔, 可选 100-1000 ms (每 100 ms 一档), 共十档, 默认 100 ms. 数值越小, 更新越及时, 查询次数也越多.
+- **Enable SMTC**: Enable or disable the plugin's functionality.
+- **Share Cover**: Share artwork, enabled by default. Disabling clears artwork and cancels retrieval; re-enabling retrieves artwork for the current track.
+- **Share Track Info**: Share the title, artist and album, enabled by default. Disabling clears these fields and stops text tag queries; re-enabling reads the current track.
+- **Share Progress**: Enable or disable playback progress sharing, enabled by default. Position and duration follow Timeline Mode. Enable Enable Seeking to also allow position changes.
+- **Enable Seeking**: Allow seeking through SMTC, enabled by default. The short name in compact interfaces is Seeking. Requires Share Progress. Seeking preserves the playing or paused state.
+- **Timeline Mode**: Select the progress time base, defaulting to Original + Pitch. Original + Pitch shares the original position and duration with the actual playback rate, matching lyric timestamps. Adjusted shares speed-adjusted position and duration with a playback rate of 1.
+- **Source Deck**: Select Deck 1-4, Left, Right or Master as the source for track information and playback control.
+- **Polling Interval**: Set how often track information and playback state are queried, at 100-1000 ms in 100 ms steps (10 options). The default is 100 ms. Shorter intervals provide faster updates but increase the number of queries.
 
-设置会在 VirtualDJ 关闭时自动保存.
+Settings are saved automatically when VirtualDJ closes.
 
-> 如果想关闭插件功能, 请点击插件设置内的关闭按钮, 不要点击 VirtualDJ 提供的插件关闭功能 (小绿点). 这会导致插件在列表中不可见, 需要重启 VirtualDJ 才能恢复.
-
----
-
-<a id="其他内容"></a>
-## 其他内容 📚
-
-<p align="center"><a href="Docs/md/DEVELOPMENT.md">开发相关</a> · <a href="Docs/md/CHANGELOG.md">更改日志</a></p>
-
-### 补充说明 💡
-
-#### 1. 为什么有些歌曲没有封面?
-
-本地曲目只读取文件标签中的内嵌封面. 网络曲目需要 VirtualDJ 主数据库中存在可用的封面链接, 插件会自动下载封面.
-
-如果没有封面, 下载失败或图片超过限制, 插件会保持无封面, 不定时重试. 切走再切回来, 重新启用插件或重新启用 Share Cover 时会再次尝试.
-
-#### 2. 修改歌曲标签后为什么没有立即更新?
-
-标题, 艺术家和专辑只在切歌, 切换来源, 重新启用插件或重新启用 Share Track Info 时读取.
-
-#### 3. 上一首和下一首按哪个列表切歌?
-
-按照 VirtualDJ 浏览器当前歌曲列表切歌. 列表边界和播放中的歌曲能否被替换由 VirtualDJ 决定.
-
-#### 4. 播放进度如何共享和控制?
-
-开启 Share Progress 后, 插件持续查询实际进度, 正常播放由接收端按播放速率推进; 状态或时间轴变化时立即发布, 实际位置与预测位置偏差超过 100 ms 时校正. 查询间隔由 Polling Interval 控制, 默认 100 ms. Timeline Mode 默认 Original + Pitch, 共享原始歌曲时间轴和实际播放速率. Adjusted 模式共享随 VirtualDJ 速度折算的位置和总时长, 速率保持 1.
-
-例如原始时长 300 秒的歌曲在 1.25 倍速下, Original + Pitch 仍共享 300 秒并发布速率 1.25; Adjusted 共享 240 秒并发布速率 1. 歌词软件是否按速率推算进度取决于该软件的实现.
-
-同时开启 Enable Seeking 后, 支持该功能的软件可以通过 SMTC 请求跳转. 两种模式下插件均按请求位置与已发布总时长的比例定位, 不再额外乘除播放速率, 保持原来的播放或暂停状态. 关闭位置控制后仍可共享进度; 关闭进度共享后不再允许跳转.
-
-进度条是否显示, 以及点击或拖动如何操作, 由读取 SMTC 的软件决定. 空 Deck, 无有效时长或反向播放时不共享进度, 也不开放跳转.
-
-#### 5. 如何查看运行日志?
-
-日志保存在 DLL 同目录的 **SMTC.log** 中.
-
-日志使用英语, 包含 UTC 时间, 条目类型和具体内容. 进度共享有效时, 每约 5 秒汇总有效查询次数, 发布尝试次数, 更新原因, 当前模式, 位置, 时长与播放速率. 更新原因计数可能重叠. 超过 10 MB 后自动清空并重新写入.
+> To disable the plugin's functionality, use the disable button in the plugin settings. Do not disable the plugin using VirtualDJ's small green indicator. Doing so will hide the plugin from the list, and you will need to restart VirtualDJ to restore it.
 
 ---
 
-### BUG 汇报 😨
+<a id="additional-information"></a>
+## Additional Information 📚
 
-请详细描述遇到的问题: 具体行为, 是否可以复现, 并提供 SMTC 插件版本, Windows 版本, 复现步骤, 相关截图以及运行日志文件.
+<p align="center"><a href="Docs/md/DEVELOPMENT_en.md">Development</a> · <a href="Docs/md/CHANGELOG_en.md">Changelog</a></p>
+
+### Additional Notes 💡
+
+#### 1. Why do some tracks have no artwork?
+
+Local tracks use only artwork embedded in file tags. Online tracks require a valid cover link in VirtualDJ's main database, which the plugin uses to download the artwork automatically.
+
+If no artwork is found, a download fails or an image exceeds the limits, the plugin leaves the artwork empty without periodic retries. Switching away and back, re-enabling the plugin or re-enabling Share Cover triggers another attempt.
+
+#### 2. Why do edited track tags not update immediately?
+
+The title, artist and album are read only when the track changes, the source changes, the plugin is re-enabled or Share Track Info is re-enabled.
+
+#### 3. Which list do previous and next follow?
+
+Track navigation follows the current song list in the VirtualDJ browser. VirtualDJ determines what happens at list boundaries and whether a playing track can be replaced.
+
+#### 4. How is playback progress shared and controlled?
+
+With Share Progress enabled, the plugin polls actual progress while receivers advance from the published anchor and rate. State or timeline changes are published immediately; position drift above 100 ms triggers correction. Polling Interval controls how often queries run; the default is 100 ms. Timeline Mode defaults to Original + Pitch, sharing the original media timeline and actual playback rate. Adjusted shares position and duration adjusted for the speed in VirtualDJ, with a playback rate of 1.
+
+For a 300-second track played at 1.25 times speed, Original + Pitch publishes a duration of 300 seconds and a rate of 1.25; Adjusted publishes 240 seconds and a rate of 1. How lyric applications extrapolate position using the rate depends on their implementation.
+
+With Enable Seeking also enabled, compatible applications can request a seek through SMTC. In either mode, the plugin seeks by the ratio of the requested position to the published duration, without applying the playback rate again and preserves the playing or paused state. Disabling position control leaves progress sharing available; disabling progress sharing also prevents seeking.
+
+The application reading SMTC decides whether to show a progress bar and how clicks or dragging behave. Empty Decks, unknown duration and reverse playback do not expose progress or seeking.
+
+#### 5. Where can I find the log?
+
+Logs are saved as **SMTC.log** in the same folder as the DLL.
+
+Logs are written in English and include UTC timestamps, entry types and detailed messages. While valid progress is available, a summary approximately every 5 seconds records valid queries, publication attempts, update reasons, mode, position, duration and playback rate. Reason counts may overlap. Once the log exceeds 10 MB, it is cleared and writing starts again.
 
 ---
 
-### 鸣谢 🙌
+### Bug Reports 😨
 
-为此项目测试的朋友们
+Please describe the issue in detail: what happens, whether it can be reproduced, and provide the SMTC plugin version, Windows version, steps to reproduce, relevant screenshots and the log file.
+
+---
+
+### Acknowledgements 🙌
+
+The friends who tested this project
 
 ---
 
@@ -155,15 +155,15 @@
 <p align="center">
   <a href="https://space.bilibili.com/475951038">BILIBILI</a>
   ·
-  <a href="https://cn.virtualdj.com/wiki/Developers.html">VirtualDJ 开发者文档</a>
+  <a href="https://www.virtualdj.com/wiki/Developers.html">VirtualDJ Developer Documentation</a>
 </p>
 
 ---
 
-### 捐赠 🧋
+### Donate 🧋
 
 <p align="center">
-  🥰请我喝奶茶喵 谢谢你喵🥰
+  🥰Treat me to bubble tea, meow! Thank you, meow!🥰
 </p>
 
 <p align="center">
@@ -171,5 +171,5 @@
 </p>
 
 <p align="center">
-  <img width="420" src="Docs/imgs/alipay_wechat.jpg" alt="请我喝奶茶">
+  <img width="420" src="Docs/imgs/alipay_wechat.jpg" alt="Treat me to bubble tea">
 </p>
