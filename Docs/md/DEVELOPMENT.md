@@ -1,6 +1,6 @@
 # 开发相关
 
-**中文** · [English](DEVELOPMENT_en.md)
+[English](DEVELOPMENT_en.md) · **中文**
 
 本文说明 v0.1.3 的实现. [更新记录](CHANGELOG.md).
 

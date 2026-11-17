@@ -1,6 +1,6 @@
 # Development
 
-[中文](DEVELOPMENT.md) · **English**
+**English** · [中文](DEVELOPMENT.md)
 
 This document describes v0.1.3. See the [changelog](CHANGELOG_en.md).
 

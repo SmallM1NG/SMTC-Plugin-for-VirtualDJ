@@ -1,6 +1,6 @@
 # Changelog
 
-[中文](CHANGELOG.md) · **English**
+**English** · [中文](CHANGELOG.md)
 
 ## v0.1.3
 
