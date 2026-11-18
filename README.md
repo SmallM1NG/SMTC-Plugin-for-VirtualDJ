@@ -14,7 +14,7 @@
 
 <p align="center"><b>English</b> · <a href="README_zh.md">中文</a></p>
 
-<p align="center"><a href="#project-introduction">Project Introduction</a> · <a href="#feature-showcase">Feature Showcase</a> · <a href="#how-to-install">How to Install</a> · <a href="#how-to-use">How to Use</a> · <a href="#additional-information">Additional Information</a> · <a href="Docs/md/DEVELOPMENT_en.md">Development</a> · <a href="Docs/md/CHANGELOG_en.md">Changelog</a></p>
+<p align="center"><a href="#project-introduction">Project Introduction</a> · <a href="#feature-showcase">Feature Showcase</a> · <a href="#how-to-install">How to Install</a> · <a href="#how-to-use">How to Use</a> · <a href="#additional-information">Additional Information</a> · <a href="Docs/md/DEVELOPMENT.md">Development</a> · <a href="Docs/md/CHANGELOG.md">Changelog</a></p>
 
 ---
 
@@ -102,7 +102,7 @@ Settings are saved automatically when VirtualDJ closes.
 <a id="additional-information"></a>
 ## Additional Information 📚
 
-<p align="center"><a href="Docs/md/DEVELOPMENT_en.md">Development</a> · <a href="Docs/md/CHANGELOG_en.md">Changelog</a></p>
+<p align="center"><a href="Docs/md/DEVELOPMENT.md">Development</a> · <a href="Docs/md/CHANGELOG.md">Changelog</a></p>
 
 ### Additional Notes 💡
 

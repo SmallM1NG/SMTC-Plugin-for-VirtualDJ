@@ -2,7 +2,7 @@
 
 **English** · [中文](DEVELOPMENT_zh.md)
 
-This document describes v0.1.3. See the [changelog](CHANGELOG_en.md).
+This document describes v0.1.3. See the [changelog](CHANGELOG.md).
 
 ## Build prerequisites
 

@@ -1,6 +1,6 @@
 # 更改日志
 
-[English](CHANGELOG_en.md) · **中文**
+[English](CHANGELOG.md) · **中文**
 
 ## v0.1.3
 
